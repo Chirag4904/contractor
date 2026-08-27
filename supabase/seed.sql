@@ -1,0 +1,14 @@
+-- ============================================================
+-- HISAAB — SEED DATA
+-- Run after migrations to set up initial admin user.
+-- 
+-- After signing up with your email, run this SQL in the
+-- Supabase SQL Editor to promote yourself to admin:
+--
+--   UPDATE public.profiles
+--   SET role = 'admin'
+--   WHERE id = (
+--     SELECT id FROM auth.users
+--     WHERE email = 'YOUR_EMAIL@example.com'
+--   );
+-- ============================================================
