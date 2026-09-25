@@ -20,6 +20,10 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Plus, HandCoins, Loader2 } from "lucide-react";
+
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Edit, Trash2, MoreHorizontal } from "lucide-react";
+
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import type { Advance, PaymentMode } from "@/types/database";
 
@@ -34,6 +38,8 @@ export default function AdvancesPage() {
   const [siteFilter, setSiteFilter] = useSiteFilter("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [form, setForm] = useState({
     site_id: "",
     labour_id: "",
@@ -70,6 +76,7 @@ export default function AdvancesPage() {
   useEffect(() => { loadData(); }, [siteFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function openCreate() {
+    setEditId(null);
     const s = siteFilter === "all" ? "" : siteFilter;
     setForm({
       site_id: s,
@@ -83,22 +90,58 @@ export default function AdvancesPage() {
     setDialogOpen(true);
   }
 
+  function openEdit(advance: AdvanceWithLabour) {
+    setEditId(advance.id);
+    setForm({
+      site_id: advance.site_id,
+      labour_id: advance.labour_id,
+      advance_date: advance.advance_date,
+      amount: advance.amount.toString(),
+      payment_mode: advance.payment_mode,
+      note: advance.note || "",
+    });
+    if (advance.site_id) loadLabour(advance.site_id);
+    setDialogOpen(true);
+  }
+
+  async function handleDelete() {
+    if (!deleteId) return;
+    setSaving(true);
+    const supabase = createClient();
+    await supabase.from("advances").delete().eq("id", deleteId);
+    setSaving(false);
+    setDeleteId(null);
+    loadData();
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    await supabase.from("advances").insert({
-      site_id: form.site_id,
-      labour_id: form.labour_id,
-      advance_date: form.advance_date,
-      amount: parseFloat(form.amount),
-      payment_mode: form.payment_mode,
-      note: form.note || null,
-      created_by: user?.id ?? null,
-      updated_by: user?.id ?? null,
-    });
+    if (editId) {
+      await supabase.from("advances").update({
+        site_id: form.site_id,
+        labour_id: form.labour_id,
+        advance_date: form.advance_date,
+        amount: parseFloat(form.amount),
+        payment_mode: form.payment_mode,
+        note: form.note || null,
+        updated_by: user?.id ?? null,
+      }).eq("id", editId);
+    } else {
+      await supabase.from("advances").insert({
+        site_id: form.site_id,
+        labour_id: form.labour_id,
+        advance_date: form.advance_date,
+        amount: parseFloat(form.amount),
+        payment_mode: form.payment_mode,
+        note: form.note || null,
+        created_by: user?.id ?? null,
+        updated_by: user?.id ?? null,
+      });
+    }
 
     setSaving(false);
     setDialogOpen(false);
@@ -133,6 +176,7 @@ export default function AdvancesPage() {
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead>Mode</TableHead>
                 <TableHead>Note</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -143,6 +187,23 @@ export default function AdvancesPage() {
                   <TableCell className="text-right font-medium">{formatCurrency(a.amount)}</TableCell>
                   <TableCell className="uppercase text-xs">{a.payment_mode}</TableCell>
                   <TableCell className="text-muted-foreground">{a.note ?? "—"}</TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEdit(a)}>
+                          <Edit className="mr-2 h-4 w-4" /> Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setDeleteId(a.id)} className="text-destructive">
+                          <Trash2 className="mr-2 h-4 w-4" /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -152,7 +213,7 @@ export default function AdvancesPage() {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Add Advance</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{editId ? "Edit Advance" : "Add Advance"}</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label>Site *</Label>
@@ -201,11 +262,26 @@ export default function AdvancesPage() {
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={saving}>
-                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Add Advance
+                                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {editId ? "Save Changes" : "Add Advance"}
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Delete Advance</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">Are you sure you want to delete this advance? This action cannot be undone.</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeleteId(null)}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDelete} disabled={saving}>
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Delete
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>
